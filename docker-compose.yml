@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aiqg
+      POSTGRES_USER: aiqg
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiqg -d aiqg"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://aiqg:${POSTGRES_PASSWORD:-change-me}@postgres:5432/aiqg
+      STORAGE_DIR: /app/storage
+      FRONTEND_ORIGIN: http://localhost:3000
+    volumes:
+      - upload_data:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh","-c","alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_INTERNAL_URL: http://backend:8000
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  upload_data:
